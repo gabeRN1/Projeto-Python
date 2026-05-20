@@ -42,20 +42,3 @@ Durante o desenvolvimento, os seguintes princípios foram adotados:
 3.  Acesse a aplicação no seu navegador:
     * **Front-end (React):** http://localhost:5173
     * **Back-end (API Django):** http://localhost:8000/api/
-
-## ✅ Progresso dos Requisitos
-
-- [ ] CRUD de Tarefas (10 Pontos)
-- [ ] Desenvolver em React (2 Pontos)
-- [x] Rodar a aplicação em Docker e Docker Compose (2 Pontos)
-- [ ] Utilizar Django REST Framework (2 Pontos)
-- [ ] Escrever testes de unidade com pytest para o back-end (2 Pontos)
-- [ ] Escrever testes com Selenium no Front-end (1 Ponto)
-- [ ] Implementar CI/CD (1 Ponto)
-- [ ] Criar e gerenciar categorias
-- [ ] Compartilhar tarefas com outros usuários
-- [ ] Criar e testar uma API externa para integração
-- [ ] Autenticação (Criar conta e Login)
-- [ ] Marcar tarefas como concluídas/não concluídas
-- [ ] Filtragem de Tarefas
-- [ ] Paginação de Tarefas
