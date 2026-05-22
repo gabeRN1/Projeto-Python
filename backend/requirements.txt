@@ -3,3 +3,6 @@ djangorestframework
 psycopg2-binary
 dj-database-url
 django-cors-headers
+djangorestframework
+djangorestframework-simplejwt
+selenium==4.44.0
