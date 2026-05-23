@@ -1,41 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+
+import { service } from '../services/service';
 
 export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [users, setUsers] = useState([]); // Lista de usuários para compartilhar
-  const [notifications, setNotifications] = useState([]); // Notificações
+  const [users, setUsers] = useState([]); 
+  const [notifications, setNotifications] = useState([]); 
+  const [latestToast, setLatestToast] = useState(null); 
+  const [weather, setWeather] = useState(null);
+  const [username, setUsername] = useState(localStorage.getItem('username') || 'Usuário');
 
-  // Estados para a Criação de Tarefas
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [categoryInput, setCategoryInput] = useState(''); // Input livre de categoria
+  const [categoryInput, setCategoryInput] = useState(''); 
 
-  // Filtros e Paginação
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [page, setPage] = useState(1);
   const itemsPerPage = 5;
-  
-  // Modais e UI
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [taskToShare, setTaskToShare] = useState(null);
   const [selectedUserToShare, setSelectedUserToShare] = useState('');
 
+  const notificationRef = useRef(null);
   const navigate = useNavigate();
 
-  const getHeaders = () => {
-    return { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
+
+  const fetchUserProfile = async () => {
+    try {
+      const res = await service.getProfile();
+      if (res.data && res.data.username) {
+        setUsername(res.data.username);
+        localStorage.setItem('username', res.data.username); 
+      }
+    } catch (err) {
+      console.error("Erro ao buscar perfil do usuário", err);
+    }
   };
 
-  // --- FUNÇÕES DE BUSCA (GET) ---
   const fetchTasks = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/tasks/', getHeaders());
+      const res = await service.getTasks();
       setTasks(res.data);
     } catch (err) {
       logout();
@@ -44,7 +53,7 @@ export default function Dashboard() {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/categories/', getHeaders());
+      const res = await service.getCategories();
       setCategories(res.data);
     } catch (err) {
       console.error(err);
@@ -53,7 +62,7 @@ export default function Dashboard() {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/users/', getHeaders());
+      const res = await service.getUsers();
       setUsers(res.data);
     } catch (err) {
       console.error("Erro ao buscar usuários", err);
@@ -62,28 +71,59 @@ export default function Dashboard() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/notifications/', getHeaders());
+      const res = await service.getNotifications();
       setNotifications(res.data);
+      
+      const unread = res.data.filter(n => !n.read);
+      if (unread.length > 0) {
+        setLatestToast(unread[0]);
+      } else {
+        setLatestToast(null);
+      }
     } catch (err) {
       console.error("Erro ao buscar notificações", err);
     }
   };
 
+
+  const fetchWeather = async () => {
+    try {
+      const res = await service.getClimaLocal();
+      setWeather(res.data);
+    } catch (err) {
+      console.error("Erro ao buscar dados climáticos", err);
+    }
+  };
+
+  // Clique fora do componente de notificações
   useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    fetchUserProfile();
     fetchTasks();
     fetchCategories();
     fetchUsers();
     fetchNotifications();
+    fetchWeather(); 
     // eslint-disable-next-line
   }, []);
 
-  // --- FUNÇÕES DE AÇÃO (POST / PATCH / DELETE) ---
   const createTask = async (e) => {
     e.preventDefault();
     try {
       let categoryId = null;
 
-      // Lógica inteligente para Categoria: verifica se existe, se não, cria na hora.
       if (categoryInput.trim() !== '') {
         const existingCategory = categories.find(
           cat => cat.name.toLowerCase() === categoryInput.trim().toLowerCase()
@@ -92,20 +132,19 @@ export default function Dashboard() {
         if (existingCategory) {
           categoryId = existingCategory.id;
         } else {
-          const catRes = await axios.post('http://localhost:8000/api/categories/', { name: categoryInput.trim() }, getHeaders());
+          const catRes = await service.createCategory(categoryInput.trim());
           categoryId = catRes.data.id;
-          fetchCategories(); // Atualiza a barra lateral
+          fetchCategories(); 
         }
       }
 
-      await axios.post('http://localhost:8000/api/tasks/', {
+      await service.createTask({
         title: newTaskTitle,
         description: newTaskDescription,
         category: categoryId,
         completed: false
-      }, getHeaders());
+      });
       
-      // Limpa os campos e fecha o modal
       setNewTaskTitle('');
       setNewTaskDescription('');
       setCategoryInput('');
@@ -116,20 +155,13 @@ export default function Dashboard() {
     }
   };
 
-  const createCategorySidebar = async (e) => {
-    e.preventDefault();
-    await axios.post('http://localhost:8000/api/categories/', { name: categoryInput }, getHeaders());
-    setCategoryInput('');
-    fetchCategories();
-  };
-
   const toggleTask = async (task) => {
-    await axios.patch(`http://localhost:8000/api/tasks/${task.id}/`, { completed: !task.completed }, getHeaders());
+    await service.toggleTask(task.id, !task.completed);
     fetchTasks();
   };
 
   const deleteTask = async (id) => {
-    await axios.delete(`http://localhost:8000/api/tasks/${id}/`, getHeaders());
+    await service.deleteTask(id);
     fetchTasks();
   };
 
@@ -141,7 +173,7 @@ export default function Dashboard() {
   const confirmShareTask = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`http://localhost:8000/api/tasks/${taskToShare.id}/share/`, { user_id: selectedUserToShare }, getHeaders());
+      await service.shareTask(taskToShare.id, selectedUserToShare);
       alert("Tarefa compartilhada com sucesso! O usuário foi notificado.");
       setIsShareModalOpen(false);
       setTaskToShare(null);
@@ -152,9 +184,22 @@ export default function Dashboard() {
   };
 
   const markNotificationAsRead = async (id) => {
-    // Exemplo de rota para marcar notificação como lida
-    await axios.patch(`http://localhost:8000/api/notifications/${id}/`, { read: true }, getHeaders());
+    await service.markNotificationAsRead(id);
     fetchNotifications();
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    const unread = notifications.filter(n => !n.read);
+    if (unread.length === 0) return;
+
+    try {
+      await Promise.all(
+        unread.map(notif => service.markNotificationAsRead(notif.id))
+      );
+      fetchNotifications();
+    } catch (err) {
+      console.error("Erro ao marcar todas as notificações como lidas", err);
+    }
   };
 
   const logout = () => {
@@ -162,7 +207,7 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  // --- FILTROS E PAGINAÇÃO ---
+
   const filteredTasks = tasks.filter(task => {
     const matchesStatus = filterStatus === 'all' || 
       (filterStatus === 'completed' && task.completed) || 
@@ -174,37 +219,74 @@ export default function Dashboard() {
   const paginatedTasks = filteredTasks.slice((page - 1) * itemsPerPage, page * itemsPerPage);
   const totalPages = Math.ceil(filteredTasks.length / itemsPerPage) || 1;
 
+  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 selection:bg-indigo-500 selection:text-white relative">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* CABEÇALHO COM NOTIFICAÇÕES */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 bg-slate-800/50 backdrop-blur-md rounded-2xl border border-slate-700/50 gap-4 shadow-xl relative">
+        {/* CABEÇALHO */}
+        <header className="hidden flex-col md:flex-row justify-between items-start md:items-center p-6 bg-slate-800/50 backdrop-blur-md rounded-2xl border border-slate-700/50 gap-4 shadow-xl relative z-40 sm:flex">
           <div>
-            <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">To-do list</h1>
+            <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-cyan-400">To-do list</h1>
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Sino de Notificações */}
-            <div className="relative">
-              <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 bg-slate-700 hover:bg-slate-600 rounded-full transition-all">
+            
+            {weather && (
+              <div className="hidden flex-col items-end text-right sm:flex border-r border-slate-700/50 pr-4 mr-2">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                  📍 {weather.cidade}, {weather.estado}
+                </span>
+                <span className="text-sm font-semibold text-cyan-300">
+                  {weather.temperatura > 25 ? '☀️' : '⛅'} {weather.temperatura}{weather.unidade}
+                </span>
+              </div>
+            )}
+
+  
+            <div className="hidden flex-col items-end text-right sm:flex">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Usuário</span>
+              <span className="text-sm font-semibold text-indigo-300">{username}</span>
+            </div>
+
+
+            <div ref={notificationRef} className="relative">
+              <button 
+                onClick={() => {
+                  const nextState = !showNotifications;
+                  setShowNotifications(nextState);
+                  if (nextState) {
+                    markAllNotificationsAsRead(); 
+                  }
+                }} 
+                className="relative p-2.5 bg-slate-700 hover:bg-slate-600 rounded-full transition-all flex items-center justify-center text-lg"
+              >
                 🔔
-                {notifications.filter(n => !n.read).length > 0 && (
-                  <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 rounded-full border-2 border-slate-800"></span>
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-rose-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center shadow-lg animate-pulse border border-slate-800">
+                    {unreadNotificationsCount}
+                  </span>
                 )}
               </button>
 
-              {/* Dropdown de Notificações */}
+  
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-72 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-                  <div className="p-3 border-b border-slate-700 bg-slate-800/80 font-semibold text-sm">Notificações</div>
-                  <div className="max-h-64 overflow-y-auto">
+                <div className="absolute right-0 mt-2 w-72 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-100 overflow-hidden">
+                  <div className="p-3 border-b border-slate-700 bg-slate-800 font-semibold text-sm flex justify-between items-center">
+                    <span>Notificações</span>
+                    {unreadNotificationsCount > 0 && <span className="text-[10px] bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-bold">{unreadNotificationsCount} novas</span>}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto bg-slate-800">
                     {notifications.length === 0 ? (
                       <div className="p-4 text-xs text-slate-400 text-center">Nenhuma notificação nova.</div>
                     ) : (
                       notifications.map(notif => (
-                        <div key={notif.id} onClick={() => markNotificationAsRead(notif.id)} className={`p-3 text-xs border-b border-slate-700/50 cursor-pointer hover:bg-slate-700 transition-all ${notif.read ? 'opacity-50' : 'bg-indigo-900/20'}`}>
-                          <p>{notif.message}</p>
+                        <div key={notif.id} onClick={() => markNotificationAsRead(notif.id)} className={`p-3 text-xs border-b border-slate-700/50 cursor-pointer hover:bg-slate-700 transition-all ${notif.read ? 'opacity-50 bg-slate-800' : 'bg-indigo-950 border-l-2 border-indigo-500'}`}>
+                          <div className="flex justify-between items-start gap-1">
+                            <p className={notif.read ? 'text-slate-400' : 'text-slate-100 font-medium'}>{notif.message}</p>
+                            {!notif.read && <span className="w-2 h-2 bg-indigo-400 rounded-full shrink-0 mt-1"></span>}
+                          </div>
                         </div>
                       ))
                     )}
@@ -263,7 +345,6 @@ export default function Dashboard() {
                           <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded text-[10px] uppercase font-bold">{task.category_details.name}</span>
                         )}
                       </div>
-                      {/* Renderização da Descrição */}
                       {task.description && (
                         <p className={`text-sm mt-1 ${task.completed ? 'text-slate-600' : 'text-slate-400'}`}>{task.description}</p>
                       )}
@@ -295,7 +376,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* MODAL DE CRIAÇÃO DE TAREFA */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-md">
@@ -305,14 +385,10 @@ export default function Dashboard() {
                 <label className="block text-sm font-medium text-slate-300 mb-1">Título</label>
                 <input value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} type="text" placeholder="Resumo da tarefa..." required autoFocus className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-indigo-500 focus:outline-none" />
               </div>
-              
-              {/* Novo Campo: Descrição */}
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">Descrição (Opcional)</label>
                 <textarea value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} rows="3" placeholder="Detalhes adicionais..." className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-indigo-500 focus:outline-none resize-none"></textarea>
               </div>
-              
-              {/* Novo Campo: Input de Categoria */}
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">Categoria (Busque ou crie uma nova)</label>
                 <input 
@@ -336,7 +412,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* NOVO MODAL DE COMPARTILHAMENTO DE TAREFA */}
       {isShareModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-sm">
@@ -363,6 +438,18 @@ export default function Dashboard() {
         </div>
       )}
 
+      {latestToast && (
+        <div className="fixed bottom-5 right-5 max-w-sm bg-slate-800 border-2 border-indigo-500 text-white p-4 rounded-xl shadow-2xl z-50 animate-bounce-short flex flex-col gap-2 backdrop-blur-md">
+          <div className="flex justify-between items-start">
+            <span className="font-bold text-indigo-400 text-xs tracking-wide uppercase">🔔 Nova Tarefa Recebida!</span>
+            <button onClick={() => setLatestToast(null)} className="text-slate-400 hover:text-white text-xs px-1">✕</button>
+          </div>
+          <p className="text-xs text-slate-200 font-medium">{latestToast.message}</p>
+          <button onClick={() => { markNotificationAsRead(latestToast.id); setLatestToast(null); }} className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline text-left mt-1">
+            Marcar como lida
+          </button>
+        </div>
+      )}
     </div>
   );
 }
