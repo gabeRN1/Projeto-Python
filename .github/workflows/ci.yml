@@ -11,7 +11,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Subir containers (Backend + Frontend)
-        run: docker-compose up -d --build
+        run: docker compose up -d --build
 
       - name: Esperar os serviços subirem
         run: sleep 15 
@@ -28,9 +28,7 @@ jobs:
           pip install pytest pytest-django selenium
 
       - name: Executar Testes do Backend (Pytest)
-        run: |
-          cd backend
-          pytest tasks/tests_api.py
+        run: docker compose exec -T backend pytest tasks/tests_api.py
 
       - name: Executar Testes do Frontend (Selenium)
         run: |
