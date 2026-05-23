@@ -23,15 +23,16 @@ services:
       - DATABASE_URL=postgres://postgres:password@db:5432/python_db
 
   frontend:
-    build: ./frontend
-    command: npm run serve
+    build: ./frontend-react
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     volumes:
-      - ./frontend:/app
+      - ./frontend-react:/app
       - /app/node_modules
     ports:
-     - "8080:8080"
+      - "5173:5173"
     environment:
       - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
 

@@ -5,7 +5,11 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ['id', 'name']
-
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email']
+        
 class TaskSerializer(serializers.ModelSerializer):
     category_details = CategorySerializer(source='category', read_only=True)
     
