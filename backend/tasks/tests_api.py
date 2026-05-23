@@ -69,7 +69,7 @@ def test_share_task(client, user1, user2):
     base_url = reverse('task-detail', args=[task.id])
     url = f"{base_url}share/"
     
-    response = client.post(url, {'username': 'testuser2'}, format='json')
+    response = client.post(url, {'user_id': user2.id}, format='json')
     assert response.status_code == 200
     
     task.refresh_from_db()
